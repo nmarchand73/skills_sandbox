@@ -1,7 +1,7 @@
 """Execute skills as CrewAI agents."""
 import os
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from crewai import Agent, Task, Crew
 from crewai.tools import BaseTool
 from langchain_openai import ChatOpenAI
@@ -99,7 +99,7 @@ class ReadSkillMDTool(BaseTool):
 class ReferenceTool(BaseTool):
     """Tool for reading reference files from skills."""
     name: str = "read_reference"
-    description: str = "Read a reference file (text files like .md, .txt) ONLY when you need background context, frameworks, strategies, or methodologies. For PDF files, use read_pdf tool instead. Use read_skill_md first to understand the skill, then use list_files to see available files. Only read references that are directly relevant to the task - skip if not needed."
+    description: str = "Read a reference file (text files like .md, .txt) to get frameworks, methodologies, examples, or strategies. You should read MULTIPLE references (at least 2-3, or 3-4 if 7+ are available) to get comprehensive coverage. Each reference provides different value - use list_files first to see all available files, then read several of them. For PDF files, use read_pdf tool instead. Read references that are relevant to your task - don't skip them."
     
     def _run(self, filename: str) -> str:
         """Read a reference file."""
@@ -272,7 +272,7 @@ def create_agent_from_skill(agent_config: Dict[str, Any], skill_path: Path) -> A
     ]
     
     # Get LLM configuration
-    model_name = os.getenv("OPENAI_MODEL", "gpt-4-turbo-preview")
+    model_name = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
     temperature = float(os.getenv("OPENAI_TEMPERATURE", "0.7"))
     
     # Create LLM instance
@@ -306,44 +306,67 @@ def execute_skill_agent(
     agent = create_agent_from_skill(agent_config, skill_path)
     
     # Enhanced task description that uses SKILL.md as primary reference
-    # Emphasizes that a single skill can chain multiple scripts and references
+    # Emphasizes comprehensive use of ALL available resources
     enhanced_task = f"""{task_description}
 
-IMPORTANT INSTRUCTIONS:
-1. FIRST: Read SKILL.md using read_skill_md tool - this is the PRIMARY reference that explains:
-   - What this skill does and its purpose
-   - Available workflows and how to use them
-   - Which scripts to use and when
-   - Which references are available and when to use them
-   - Best practices and examples
+CRITICAL: You must use this skill's resources COMPREHENSIVELY and THOROUGHLY.
 
-2. CHAIN MULTIPLE RESOURCES: A single skill can chain multiple scripts and/or references:
-   - **Multiple Scripts**: Execute scripts sequentially (e.g., fetch_data.py → process_data.py → analyze.py)
-   - **Multiple References**: Read different reference files for different purposes (e.g., frameworks.md, methodologies.md, examples.md)
-   - **Combine Scripts + References**: Use scripts for data processing and references for context/frameworks
-   - Follow SKILL.md guidance to determine which resources to use and in what order
+STEP 1: Read SKILL.md FIRST (MANDATORY)
+- Use read_skill_md tool IMMEDIATELY - this is your PRIMARY guide
+- SKILL.md contains:
+  * Complete workflows and step-by-step instructions
+  * Which scripts to use and in what order
+  * Which references to read and when
+  * Examples and best practices
+  * Expected outputs and formats
+- DO NOT proceed without reading SKILL.md first
+- Follow SKILL.md's guidance EXACTLY - it knows best how to use this skill
 
-3. Follow the guidance in SKILL.md to:
-   - Use the recommended scripts in the suggested order (chain multiple if available)
-   - Read multiple references when SKILL.md indicates they're needed
-   - Follow the workflows described in SKILL.md
-   - Synthesize information from all resources used
+STEP 2: Use ALL Available Scripts (if scripts exist)
+- List available scripts using list_files tool
+- Read SKILL.md to understand which scripts to use and in what order
+- Execute scripts in the sequence recommended by SKILL.md
+- Use ALMOST ALL available scripts, not just one or two
+- Each script provides different data/insights - combine them all
+- Chain scripts: output from one script feeds into the next
+- Example: If 3 scripts exist, use all 3 in the recommended order
 
-4. Use MULTIPLE scripts as guided by SKILL.md:
-   - Follow the workflow patterns described
-   - Use scripts in the sequence recommended
-   - Chain scripts together when they build on each other (e.g., data gathering → processing → analysis)
-   - Use almost all available scripts, not just one
+STEP 3: Read ALL Relevant References (if references exist)
+- List available references using list_files tool FIRST
+- After listing, you will see all available references
+- Read SKILL.md to understand which references are relevant for your task
+- Read MULTIPLE references (at least 2-3, or all if fewer than 3 exist):
+  * Frameworks for structured thinking (e.g., analytical-frameworks.md, structure-methods.md)
+  * Methodologies for approaches (e.g., analysis-methods.md, design-thinking.md)
+  * Examples for patterns (e.g., examples.md)
+  * Communication strategies (e.g., communication.md)
+  * Problem definition (e.g., tosca-framework.md)
+- IMPORTANT: If you see 7 references like the example above, read at least 3-4 of them
+- Don't skip references - each one adds unique value
+- Use read_pdf tool for PDF files, read_reference for text files
+- Read references even if scripts provide data - they add context and frameworks
+- The more references you read, the more comprehensive your analysis will be
 
-5. Read MULTIPLE reference files when needed:
-   - SKILL.md specifically mentions them for your task
-   - You need different types of context (frameworks, methodologies, examples, strategies)
-   - The task requires multiple perspectives or approaches
-   - Different references provide complementary information
+STEP 4: Synthesize COMPREHENSIVELY
+- Combine outputs from ALL scripts you executed
+- Integrate insights from ALL references you read
+- Follow SKILL.md's structure for your output
+- Be thorough - include all relevant findings
+- Show how different resources complement each other
 
-6. SKILL.md is your guide - follow its structure and recommendations
+QUALITY REQUIREMENTS:
+- Use at least 80% of available scripts (if 3 scripts exist, use at least 2-3)
+- Read MULTIPLE references:
+  * If 2-3 references exist: read at least 2
+  * If 4-6 references exist: read at least 3
+  * If 7+ references exist: read at least 3-4 (or more if highly relevant)
+  * Example: If you see 7 references like analysis-methods.md, analytical-frameworks.md, communication.md, design-thinking.md, examples.md, structure-methods.md, tosca-framework.md, read at least 3-4 of the most relevant ones
+- Don't rush - thoroughness is more important than speed
+- Follow SKILL.md workflows completely, not partially
+- Your output should reflect comprehensive use of the skill's resources
+- The more references you read, the more comprehensive and well-informed your analysis will be
 
-Your final output should synthesize information from ALL scripts and references you used, following SKILL.md's guidance."""
+Your final output must demonstrate that you used this skill's resources comprehensively and followed SKILL.md guidance thoroughly."""
     
     # Create task with emphasis on chaining multiple resources
     task = Task(
@@ -628,7 +651,7 @@ def create_agent_with_skill_path(agent_config: Dict[str, Any], skill_path: Path)
     # Log tool creation for debugging
     logger.debug(f"Created {len(tools)} tools for agent {agent_config.get('name', 'unknown')} with skill path: {skill_path_abs}")
     
-    model_name = os.getenv("OPENAI_MODEL", "gpt-4-turbo-preview")
+    model_name = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
     temperature = float(os.getenv("OPENAI_TEMPERATURE", "0.7"))
     
     llm = ChatOpenAI(
@@ -653,14 +676,22 @@ def create_agent_with_skill_path(agent_config: Dict[str, Any], skill_path: Path)
 def execute_skill_chain(
     skill_paths: list[Path],
     task_description: str,
-    agent_configs: list[Dict[str, Any]]
+    agent_configs: list[Dict[str, Any]],
+    execution_mode: str = "sequential",
+    dependencies: Optional[Dict[str, List[int]]] = None
 ) -> Dict[str, Any]:
     """Execute a chain of skills as a CrewAI crew (multiple agents working together).
     
-    Uses CrewAI's sequential process with proper task context chaining:
-    - Each task has context from previous tasks
-    - Tasks are executed sequentially
-    - Each agent builds on the previous agent's output
+    Supports both sequential and parallel execution:
+    - Sequential: Tasks execute one after another, each building on previous outputs
+    - Parallel: Independent tasks execute simultaneously, then results are synthesized
+    
+    Args:
+        skill_paths: List of skill directory paths
+        task_description: Task description for all agents
+        agent_configs: List of agent configurations
+        execution_mode: "sequential" or "parallel"
+        dependencies: Optional dict mapping task index to list of dependent task indices
     """
     if len(skill_paths) != len(agent_configs):
         raise ValueError("Number of skill paths must match number of agent configs")
@@ -676,9 +707,30 @@ def execute_skill_chain(
         agent = create_agent_with_skill_path(agent_config, skill_path)
         agents.append(agent)
         
-        # Build task description that references previous tasks
-        if i == 0:
-            # First task: full description with emphasis on providing usable output
+        # Build task description based on execution mode
+        if execution_mode == "parallel":
+            # Parallel execution: independent tasks
+            task_desc = f"""{task_description}
+
+CRITICAL: This is one of {len(skill_paths)} INDEPENDENT tasks running in PARALLEL. You work independently - other agents are working on different aspects simultaneously.
+
+YOUR RESPONSIBILITIES:
+1. Read SKILL.md FIRST using read_skill_md tool to understand this skill's capabilities
+2. Execute scripts and read references as needed to gather comprehensive information
+3. Provide complete, independent analysis from your skill's perspective
+4. Don't wait for other agents - work independently and thoroughly
+
+OUTPUT REQUIREMENTS:
+- Comprehensive and detailed findings from your skill's perspective
+- Clear structure (use headings, lists, sections)
+- Specific data points and observations
+- Complete analysis - your output will be synthesized with others later
+- Work independently - other agents are working in parallel"""
+            
+            expected_output = f"Comprehensive, independent analysis from {agent_config['name']} that provides complete findings from this skill's perspective."
+            context = []  # No context in parallel mode
+        elif i == 0:
+            # First task in sequential mode: full description with emphasis on providing usable output
             task_desc = f"""{task_description}
 
 CRITICAL: This is STEP 1 of {len(skill_paths)}. Your output will be the INPUT for the next agent.
@@ -717,42 +769,55 @@ PREVIOUS AGENT'S WORK:
 - Their output is automatically provided in your task context by CrewAI
 - The context contains their complete output - you have full access to it
 
-YOUR RESPONSIBILITIES:
-1. FIRST: Access and read the previous agent's output from your task context:
-   - CrewAI automatically provides previous task outputs in your task context
-   - The output from {prev_skill_name} is available to you - you can see it in your context
-   - READ THE ENTIRE OUTPUT carefully - don't skip any parts
+YOUR RESPONSIBILITIES - Follow This Workflow:
+
+1. FIRST: Read Previous Agent's Output (MANDATORY):
+   - CrewAI provides previous task outputs in your task context
+   - The output from {prev_skill_name} is in your context - READ IT COMPLETELY
    - Extract ALL key data points, findings, numbers, insights, and conclusions
-   - Identify what information is relevant to your task
-   - Understand the complete structure and all conclusions they provided
-   - Note any specific facts, metrics, observations, or data they discovered
-   - If the context contains structured data, extract all relevant fields
-   
-2. Read SKILL.md using read_skill_md tool to understand YOUR skill's capabilities
+   - Understand their complete analysis and structure
+   - Note all specific facts, metrics, observations, and data they discovered
+   - Don't skip any parts - read everything they provided
 
-3. Apply YOUR skill's unique capabilities to the previous agent's findings:
-   - Use your scripts to process/analyze their data (if applicable)
-   - Apply your frameworks/methodologies to their findings
-   - Use your references to provide additional context or analysis
-   
-4. BUILD ON their work - do NOT repeat what they already said:
-   - Take their findings as GIVEN
-   - Add YOUR analysis, frameworks, or insights
+2. READ SKILL.md (MANDATORY):
+   - Use read_skill_md tool to understand YOUR skill's capabilities
+   - Understand which scripts and references you should use
+   - Follow SKILL.md's workflows and guidance
+
+3. USE YOUR SKILL'S RESOURCES COMPREHENSIVELY:
+   - Use ALL relevant scripts (if scripts exist):
+     * Execute scripts in the order recommended by SKILL.md
+     * Use at least 80% of available scripts
+     * Process/analyze the previous agent's data using your scripts
+   - Read MULTIPLE references (if references exist):
+     * Read at least 2-3 references (or all if fewer exist)
+     * Use read_pdf for PDFs, read_reference for text files
+     * Apply frameworks/methodologies from references to previous findings
+     * Each reference provides different value - use them all
+
+4. BUILD ON Previous Work - Add Your Value:
+   - Take their findings as GIVEN (don't repeat them)
+   - Apply YOUR skill's unique capabilities:
+     * Use your scripts to process their data
+     * Apply your frameworks/methodologies to their findings
+     * Use your references to provide additional analysis
    - Synthesize: combine their work with your expertise
-   - Provide NEW value that builds on their foundation
+   - Provide NEW insights that build on their foundation
 
-5. Structure your output to show:
-   - What you received from the previous agent (summary)
-   - What you added (your analysis, frameworks, insights)
+5. STRUCTURE YOUR OUTPUT:
+   - Summary of what you received from previous agent
+   - What you added using your skill's resources
    - How it all fits together (synthesis)
-   - Final recommendations or conclusions
+   - Enhanced insights and conclusions
+   - If you're the last agent: final comprehensive recommendations
 
 OUTPUT REQUIREMENTS:
-- Explicitly reference and build upon the previous agent's findings
-- Show clear progression from their work to your analysis
-- Provide enhanced insights that weren't in the previous output
-- Synthesize information from both agents
-- If you're the last agent, provide final comprehensive conclusions"""
+- Must show you used YOUR skill's resources comprehensively (scripts + references)
+- Explicitly reference and build upon previous agent's findings
+- Clear progression from their work to your analysis
+- Enhanced insights that weren't in previous output
+- Synthesized information from both agents
+- If last agent: final comprehensive conclusions"""
             
             expected_output = f"Enhanced analysis from {agent_config['name']} that explicitly builds on {prev_skill_name}'s findings, adds new insights using this skill's capabilities, and provides a synthesized result."
             # Context includes all previous tasks for full chain visibility
@@ -770,29 +835,175 @@ OUTPUT REQUIREMENTS:
         else:
             logger.debug(f"Task {i+1} created (first task, no context)")
     
-    # Create crew with sequential process
-    logger.info("Creating CrewAI crew with sequential process...")
+    # Display execution flow diagram
+    logger.info("")
+    logger.info("=" * 80)
+    logger.info("EXECUTION FLOW DIAGRAM")
+    logger.info("=" * 80)
     
-    # Log context chain for debugging
-    context_chain = []
-    for i, task in enumerate(tasks):
-        if task.context:
-            prev_names = [agent_configs[j]['name'] for j in range(i)]
-            context_chain.append(f"Task {i+1} ({agent_configs[i]['name']}) <- context from: {', '.join(prev_names)}")
-        else:
-            context_chain.append(f"Task {i+1} ({agent_configs[i]['name']}) <- no context (first task)")
-    logger.debug("Context chain: " + " -> ".join(context_chain))
+    if execution_mode == "parallel" and len(tasks) > 1:
+        logger.info("")
+        logger.info("PARALLEL EXECUTION:")
+        logger.info("")
+        for i, (agent_config, task) in enumerate(zip(agent_configs, tasks)):
+            skill_name = agent_config['name'][:35]
+            logger.info(f"  ┌─ Task {i+1}: {skill_name}")
+            logger.info(f"  │  Executing independently...")
+            logger.info(f"  └─ Output")
+        
+        logger.info("")
+        logger.info("         │")
+        logger.info("         │ (All outputs collected)")
+        logger.info("         ▼")
+        logger.info("  ┌──────────────────────┐")
+        logger.info("  │  SYNTHESIS TASK      │")
+        logger.info("  └──────────────────────┘")
+        logger.info("         │")
+        logger.info("         ▼")
+        logger.info("    FINAL OUTPUT")
+    else:
+        logger.info("")
+        logger.info("SEQUENTIAL EXECUTION:")
+        logger.info("")
+        for i, (agent_config, task) in enumerate(zip(agent_configs, tasks)):
+            skill_name = agent_config['name'][:35]
+            logger.info(f"  ┌─ Task {i+1}: {skill_name}")
+            if i < len(tasks) - 1:
+                logger.info(f"  │  Output →")
+                logger.info(f"  └───────────┐")
+                logger.info("              │")
+                logger.info("              ▼")
+            else:
+                logger.info(f"  │  Final Output")
+                logger.info(f"  └─────────────")
     
-    crew = Crew(
-        agents=agents,
-        tasks=tasks,
-        verbose=True,
-        process="sequential"  # Sequential execution: CrewAI automatically passes previous task outputs via context parameter
-    )
+    logger.info("")
+    logger.info("=" * 80)
+    logger.info("")
     
-    # Log context setup for debugging
-    for i, task in enumerate(tasks):
-        logger.debug(f"Task {i+1} ({agent_configs[i]['name']}): has context from {len(task.context)} previous task(s)")
+    # Determine execution strategy based on mode
+    if execution_mode == "parallel" and len(tasks) > 1:
+        logger.info(f"Creating CrewAI crew with PARALLEL execution for {len(tasks)} independent tasks...")
+        
+        # For parallel execution, create separate crews for independent tasks
+        # Then create a final synthesis task that combines all results
+        parallel_results = []
+        
+        # Execute independent tasks in parallel (simulated by running sequentially but without dependencies)
+        for i, task in enumerate(tasks):
+            logger.info(f"Executing independent task {i+1}/{len(tasks)}: {agent_configs[i]['name']}")
+            
+            # Create a single-agent crew for this independent task
+            independent_crew = Crew(
+                agents=[agents[i]],
+                tasks=[task],
+                verbose=True,
+                process="sequential"
+            )
+            
+            try:
+                result = independent_crew.kickoff()
+                parallel_results.append({
+                    "agent_name": agent_configs[i]["name"],
+                    "output": str(result),
+                    "step": i + 1
+                })
+                logger.info(f"Task {i+1} completed successfully")
+            except Exception as e:
+                logger.error(f"Task {i+1} failed: {str(e)}")
+                parallel_results.append({
+                    "agent_name": agent_configs[i]["name"],
+                    "output": f"Error: {str(e)}",
+                    "step": i + 1
+                })
+        
+        # Create synthesis task that combines all parallel results
+        logger.info("Creating synthesis task to combine parallel results...")
+        synthesis_agent = agents[0]  # Use first agent for synthesis (or create a dedicated one)
+        
+        # Build synthesis prompt with all parallel results
+        synthesis_prompt = f"""{task_description}
+
+SYNTHESIS TASK: Combine and synthesize the following independent analyses:
+
+"""
+        for i, result in enumerate(parallel_results):
+            synthesis_prompt += f"""
+ANALYSIS {i+1} - {result['agent_name']}:
+{result['output'][:2000]}  # Truncate if too long
+"""
+        
+        synthesis_prompt += """
+
+YOUR TASK:
+1. Review all the independent analyses above
+2. Identify common themes, patterns, and insights
+3. Synthesize the findings into a comprehensive, unified analysis
+4. Highlight where different perspectives complement each other
+5. Provide final recommendations that integrate all insights
+
+Provide a comprehensive synthesis that combines all analyses."""
+        
+        synthesis_task = Task(
+            description=synthesis_prompt,
+            agent=synthesis_agent,
+            expected_output="Comprehensive synthesis combining all parallel analyses into unified insights and recommendations"
+        )
+        
+        synthesis_crew = Crew(
+            agents=[synthesis_agent],
+            tasks=[synthesis_task],
+            verbose=True,
+            process="sequential"
+        )
+        
+        try:
+            final_result = synthesis_crew.kickoff()
+            return {
+                "status": "completed",
+                "result": str(final_result),
+                "execution_mode": "parallel",
+                "agent_outputs": parallel_results + [{
+                    "agent_name": "Synthesis",
+                    "output": str(final_result),
+                    "step": len(tasks) + 1
+                }],
+                "total_steps": len(tasks) + 1
+            }
+        except Exception as e:
+            logger.error(f"Synthesis failed: {str(e)}")
+            return {
+                "status": "partial",
+                "result": "Parallel execution completed but synthesis failed",
+                "execution_mode": "parallel",
+                "agent_outputs": parallel_results,
+                "error": str(e)
+            }
+    
+    else:
+        # Sequential execution (default)
+        logger.info(f"Creating CrewAI crew with SEQUENTIAL process for {len(tasks)} dependent tasks...")
+        
+        # Log context chain for debugging
+        context_chain = []
+        for i, task in enumerate(tasks):
+            if task.context:
+                prev_names = [agent_configs[j]['name'] for j in range(i)]
+                context_chain.append(f"Task {i+1} ({agent_configs[i]['name']}) <- context from: {', '.join(prev_names)}")
+            else:
+                context_chain.append(f"Task {i+1} ({agent_configs[i]['name']}) <- no context (first task)")
+        logger.debug("Context chain: " + " -> ".join(context_chain))
+        
+        crew = Crew(
+            agents=agents,
+            tasks=tasks,
+            verbose=True,
+            process="sequential"  # Sequential execution: CrewAI automatically passes previous task outputs via context parameter
+        )
+        
+        # Log context setup for debugging
+        for i, task in enumerate(tasks):
+            logger.debug(f"Task {i+1} ({agent_configs[i]['name']}): has context from {len(task.context)} previous task(s)")
     
     # Execute
     try:

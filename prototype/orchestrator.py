@@ -12,7 +12,7 @@ class SkillOrchestrator:
     """Intelligent orchestrator that uses LLM to select and chain skills."""
     
     def __init__(self):
-        model_name = os.getenv("OPENAI_MODEL", "gpt-4-turbo-preview")
+        model_name = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
         temperature = float(os.getenv("OPENAI_TEMPERATURE", "0.3"))  # Lower temp for more consistent decisions
         
         self.llm = ChatOpenAI(
@@ -144,9 +144,23 @@ Respond with a JSON object in this exact format:
 {{
     "selected_skill_indices": [0, 1],  // List of skill indices to use (can be 1 or more)
     "execution_order": [0, 1],  // Order to execute them (same as indices if sequential)
+    "execution_mode": "sequential" or "parallel",  // "sequential" if skills depend on each other, "parallel" if they can run independently
+    "dependencies": {{"1": [0]}},  // Optional: which skills depend on which (e.g., skill 1 depends on skill 0)
     "reasoning": "Brief explanation of why these skills were selected and how they work together",
-    "execution_flow": "Description of how the skills should work together (e.g., 'Skill 1 gathers data, Skill 2 analyzes it, Skill 3 applies frameworks')"
+    "execution_flow": "Description of how the skills should work together (e.g., 'Skill 1 gathers data, Skill 2 analyzes it' or 'Skills 1 and 2 can run in parallel, then Skill 3 synthesizes')"
 }}
+
+EXECUTION MODE GUIDELINES:
+- Use "sequential" when:
+  * One skill's output is needed as input for another (e.g., data gathering → analysis)
+  * Skills build on each other's work
+  * There's a clear dependency chain
+  
+- Use "parallel" when:
+  * Skills work on independent aspects of the task
+  * Skills can gather different types of data simultaneously
+  * Skills provide complementary but independent analyses
+  * No skill depends on another's output
 
 Only select skills that are truly relevant. Prefer fewer, highly relevant skills over many marginally relevant ones.
 If one skill can handle the task alone, select only that skill."""
@@ -172,13 +186,25 @@ If one skill can handle the task alone, select only that skill."""
             selected_skills = [available_skills[i] for i in selected_indices if 0 <= i < len(available_skills)]
             
             # Add orchestration metadata
-            for skill in selected_skills:
+            execution_mode = skill_decision.get("execution_mode", "sequential")
+            dependencies = skill_decision.get("dependencies", {})
+            
+            for i, skill in enumerate(selected_skills):
                 skill["_orchestration"] = {
                     "reasoning": skill_decision.get("reasoning", ""),
                     "execution_flow": skill_decision.get("execution_flow", ""),
                     "order": skill_decision.get("execution_order", selected_indices),
+                    "execution_mode": execution_mode,
+                    "dependencies": dependencies,
                     "needs_skills_reasoning": decision.get("reasoning", "")
                 }
+            
+            logger.info(f"Execution mode determined: {execution_mode}")
+            if dependencies:
+                logger.debug(f"Dependencies: {dependencies}")
+            
+            # Display ASCII flow diagram
+            self._display_flow_diagram(selected_skills, execution_mode, dependencies)
             
             return selected_skills
             
@@ -214,6 +240,56 @@ Provide a clear, detailed answer."""
                 "error": str(e),
                 "result": None
             }
+    
+    def _display_flow_diagram(self, skills: List[Dict[str, Any]], execution_mode: str, dependencies: Dict[str, List[int]]):
+        """Display ASCII art flow diagram for execution plan."""
+        logger.info("=" * 80)
+        logger.info("EXECUTION FLOW DIAGRAM")
+        logger.info("=" * 80)
+        
+        if execution_mode == "parallel":
+            # Parallel execution diagram
+            logger.info("")
+            logger.info("PARALLEL EXECUTION:")
+            logger.info("")
+            for i, skill in enumerate(skills):
+                logger.info(f"  ┌─ Task {i+1}: {skill['name']}")
+                logger.info(f"  │  Role: {skill.get('role', 'N/A')[:50]}")
+                logger.info(f"  │  Working independently...")
+                logger.info(f"  └─ Output")
+            
+            logger.info("")
+            logger.info("         │")
+            logger.info("         │ (All outputs collected)")
+            logger.info("         ▼")
+            logger.info("  ┌──────────────────────┐")
+            logger.info("  │  SYNTHESIS TASK      │")
+            logger.info("  │  Combines all results│")
+            logger.info("  └──────────────────────┘")
+            logger.info("         │")
+            logger.info("         ▼")
+            logger.info("    FINAL OUTPUT")
+            
+        else:
+            # Sequential execution diagram
+            logger.info("")
+            logger.info("SEQUENTIAL EXECUTION:")
+            logger.info("")
+            
+            for i, skill in enumerate(skills):
+                logger.info(f"  ┌─ Task {i+1}: {skill['name']}")
+                logger.info(f"  │  Role: {skill.get('role', 'N/A')[:50]}")
+                if i < len(skills) - 1:
+                    logger.info(f"  │  Output →")
+                    logger.info(f"  └───────────┐")
+                    logger.info("              │")
+                    logger.info("              ▼")
+                else:
+                    logger.info(f"  │  Final Output")
+                    logger.info(f"  └─────────────")
+        
+        logger.info("")
+        logger.info("=" * 80)
     
     def _extract_capabilities(self, skill: Dict[str, Any]) -> str:
         """Extract a brief description of skill capabilities."""

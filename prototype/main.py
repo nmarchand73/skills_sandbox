@@ -8,6 +8,75 @@ from agent_executor import execute_skill_agent, execute_skill_chain
 from skill_discovery import discover_skills, generate_task_prompt
 from orchestrator import SkillOrchestrator
 from logger_config import setup_logging, get_logger
+from typing import List, Dict, Any
+
+
+def _display_execution_flow(skills: List[Dict[str, Any]], execution_mode: str, dependencies: Dict[str, List[int]]):
+    """Display ASCII art flow diagram for execution plan."""
+    logger.info("")
+    logger.info("=" * 80)
+    logger.info("EXECUTION FLOW")
+    logger.info("=" * 80)
+    
+    if execution_mode == "parallel":
+        # Parallel execution diagram
+        logger.info("")
+        logger.info("Mode: PARALLEL (Independent tasks)")
+        logger.info("")
+        for i, skill in enumerate(skills):
+            skill_name = skill['name'][:30]
+            role = skill.get('role', 'N/A')[:40]
+            logger.info(f"  ┌─────────────────────────────────────────┐")
+            logger.info(f"  │ Task {i+1}: {skill_name:<30} │")
+            logger.info(f"  │ {role:<41} │")
+            logger.info(f"  │ Working independently...                │")
+            logger.info(f"  └─────────────────────────────────────────┘")
+        
+        logger.info("")
+        logger.info("         │")
+        logger.info("         │ (All outputs collected)")
+        logger.info("         ▼")
+        logger.info("  ┌─────────────────────────────────────────┐")
+        logger.info("  │      SYNTHESIS TASK                     │")
+        logger.info("  │      Combines all parallel results      │")
+        logger.info("  └─────────────────────────────────────────┘")
+        logger.info("         │")
+        logger.info("         ▼")
+        logger.info("    ┌─────────────────┐")
+        logger.info("    │  FINAL OUTPUT   │")
+        logger.info("    └─────────────────┘")
+        
+    else:
+        # Sequential execution diagram
+        logger.info("")
+        logger.info("Mode: SEQUENTIAL (Dependent tasks)")
+        logger.info("")
+        
+        for i, skill in enumerate(skills):
+            skill_name = skill['name'][:30]
+            role = skill.get('role', 'N/A')[:40]
+            logger.info(f"  ┌─────────────────────────────────────────┐")
+            logger.info(f"  │ Task {i+1}: {skill_name:<30} │")
+            logger.info(f"  │ {role:<41} │")
+            
+            if i < len(skills) - 1:
+                logger.info(f"  │                                         │")
+                logger.info(f"  └─────────────────┬───────────────────────┘")
+                logger.info("                    │")
+                logger.info("                    │ Output →")
+                logger.info("                    ▼")
+            else:
+                logger.info(f"  │                                         │")
+                logger.info(f"  └─────────────────────────────────────────┘")
+                logger.info("                    │")
+                logger.info("                    ▼")
+                logger.info("            ┌─────────────────┐")
+                logger.info("            │  FINAL OUTPUT   │")
+                logger.info("            └─────────────────┘")
+    
+    logger.info("")
+    logger.info("=" * 80)
+    logger.info("")
 
 # Set up logging
 setup_logging()
@@ -129,6 +198,14 @@ def main():
         else:
             # Multiple skills chained
             logger.info("Executing skill chain...")
+            
+            # Get execution mode and display flow
+            execution_mode = selected_skills[0].get("_orchestration", {}).get("execution_mode", "sequential")
+            dependencies = selected_skills[0].get("_orchestration", {}).get("dependencies", {})
+            
+            # Display ASCII flow diagram
+            _display_execution_flow(selected_skills, execution_mode, dependencies)
+            
             logger.debug("Execution plan:")
             for step in execution_plan["flow"]:
                 logger.debug(f"  Step {step['step']}: {step['skill']} - {step['instructions']}")
@@ -144,8 +221,14 @@ def main():
                 for s in selected_skills
             ]
             
+            # Get execution mode
+            execution_mode = selected_skills[0].get("_orchestration", {}).get("execution_mode", "sequential")
+            
             # Generate combined prompt with clear flow instructions
-            flow_parts = [f"{user_task}\n\nThis task requires {len(selected_skills)} skill(s) working in sequence. Each agent builds on the previous agent's output.\n"]
+            if execution_mode == "parallel":
+                flow_parts = [f"{user_task}\n\nThis task requires {len(selected_skills)} skill(s) working in PARALLEL. Each agent works independently, then results will be synthesized.\n"]
+            else:
+                flow_parts = [f"{user_task}\n\nThis task requires {len(selected_skills)} skill(s) working in SEQUENCE. Each agent builds on the previous agent's output.\n"]
             
             for i, step in enumerate(execution_plan["flow"]):
                 skill = selected_skills[i]
@@ -158,7 +241,10 @@ def main():
                     flow_parts.append(f"Available scripts: {', '.join(skill['scripts'])}")
                 if skill.get('references'):
                     flow_parts.append(f"Available references: {len(skill['references'])} files")
-                if i < len(selected_skills) - 1:
+                if execution_mode == "parallel":
+                    flow_parts.append(f"\n→ You are working INDEPENDENTLY in parallel with other agents.")
+                    flow_parts.append(f"  Provide comprehensive analysis from your perspective. Results will be synthesized later.")
+                elif i < len(selected_skills) - 1:
                     next_skill = selected_skills[i+1]
                     flow_parts.append(f"\n→ Your output will be used by: {next_skill['name']} (Step {i+2})")
                     flow_parts.append(f"  Make sure your output is clear, complete, and usable by them.")
@@ -171,7 +257,15 @@ def main():
             
             task_prompt = "\n".join(flow_parts)
             
-            result = execute_skill_chain(skill_paths, task_prompt, agent_configs)
+            # Get execution mode and dependencies from orchestration metadata
+            execution_mode = selected_skills[0].get("_orchestration", {}).get("execution_mode", "sequential")
+            dependencies = selected_skills[0].get("_orchestration", {}).get("dependencies", {})
+            
+            logger.info(f"Execution mode: {execution_mode}")
+            if dependencies:
+                logger.debug(f"Task dependencies: {dependencies}")
+            
+            result = execute_skill_chain(skill_paths, task_prompt, agent_configs, execution_mode, dependencies)
     
     # Display results
     logger.info("="*80)

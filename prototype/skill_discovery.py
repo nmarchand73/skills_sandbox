@@ -210,28 +210,47 @@ def generate_task_prompt(skill: Dict[str, Any], user_task: str) -> str:
     prompt_parts = [user_task]
     prompt_parts.append("\n\nINSTRUCTIONS:")
     
-    # Script usage instructions
+    # Script usage instructions - emphasize comprehensive use
     if scripts:
         prompt_parts.append(f"\n1. Available scripts ({len(scripts)}): {', '.join(scripts)}")
-        prompt_parts.append("   - Use MULTIPLE scripts in sequence to gather comprehensive data")
+        prompt_parts.append("   - MANDATORY: Use MULTIPLE scripts (at least 80% of available)")
+        prompt_parts.append(f"   - If {len(scripts)} scripts exist, use at least {max(1, int(len(scripts) * 0.8))} of them")
+        prompt_parts.append("   - Execute scripts in the sequence recommended by SKILL.md")
         prompt_parts.append("   - Start with data fetching scripts, then analysis scripts")
-        prompt_parts.append("   - Use almost all available scripts, not just one")
+        prompt_parts.append("   - Chain scripts: use output from one as input for the next")
+        prompt_parts.append("   - Each script provides different data - combine them all")
+        prompt_parts.append("   - Don't skip scripts unless SKILL.md explicitly says to")
     else:
         prompt_parts.append("\n1. No scripts available - work with available references and knowledge")
     
-    # Reference usage instructions
+    # Reference usage instructions - emphasize comprehensive use
     if references:
         pdf_files = skill.get("pdf_files", [])
-        prompt_parts.append(f"\n2. Available references ({len(references)}): {', '.join(references)}")
+        text_refs = [r for r in references if r not in pdf_files]
+        prompt_parts.append(f"\n2. Available references ({len(references)} total):")
+        if text_refs:
+            prompt_parts.append(f"   - Text files ({len(text_refs)}): {', '.join(text_refs[:5])}{'...' if len(text_refs) > 5 else ''}")
         if pdf_files:
             prompt_parts.append(f"   - PDF files ({len(pdf_files)}): {', '.join(pdf_files)}")
             prompt_parts.append("     * Use read_pdf tool to extract text from PDF files")
-        prompt_parts.append("   - Read references ONLY if you need:")
-        prompt_parts.append("     * Background context or frameworks")
-        prompt_parts.append("     * Methodologies or best practices")
-        prompt_parts.append("     * Strategic guidance")
-        prompt_parts.append("   - For PDF files, use the read_pdf tool instead of read_reference")
-        prompt_parts.append("   - Skip references if script outputs are sufficient")
+        
+        # Calculate minimum references to read based on total count
+        min_refs = min(3, len(references)) if len(references) <= 3 else (3 if len(references) <= 6 else 4)
+        prompt_parts.append(f"   - MANDATORY: Read MULTIPLE references (at least {min_refs} out of {len(references)} available)")
+        prompt_parts.append("   - Reference reading guidelines:")
+        prompt_parts.append("     * If 2-3 references exist: read at least 2")
+        prompt_parts.append("     * If 4-6 references exist: read at least 3")
+        prompt_parts.append(f"     * If 7+ references exist (like you have {len(references)}): read at least 3-4")
+        prompt_parts.append("   - Each reference provides different value:")
+        prompt_parts.append("     * Frameworks for structured thinking (e.g., analytical-frameworks.md, structure-methods.md)")
+        prompt_parts.append("     * Methodologies for approaches (e.g., analysis-methods.md, design-thinking.md)")
+        prompt_parts.append("     * Examples for patterns (e.g., examples.md)")
+        prompt_parts.append("     * Communication strategies (e.g., communication.md)")
+        prompt_parts.append("     * Problem definition (e.g., tosca-framework.md)")
+        prompt_parts.append("   - Read references even if scripts provide data - they add context")
+        prompt_parts.append("   - Use read_pdf for PDFs, read_reference for text files")
+        prompt_parts.append("   - Don't skip references - each one adds unique value")
+        prompt_parts.append(f"   - With {len(references)} references available, you should read at least {min_refs} to get comprehensive coverage")
     else:
         prompt_parts.append("\n2. No reference files available")
     

@@ -88,7 +88,7 @@ $env:LOG_LEVEL="DEBUG"
 $env:LOG_FILE="logs/custom.log"
 
 # OpenAI model
-$env:OPENAI_MODEL="gpt-4-turbo-preview"
+$env:OPENAI_MODEL="gpt-4o-mini"  # Default: gpt-4o-mini (can use gpt-4-turbo-preview, gpt-4o, etc.)
 $env:OPENAI_TEMPERATURE="0.7"
 ```
 
