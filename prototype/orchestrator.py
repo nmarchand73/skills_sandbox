@@ -121,8 +121,8 @@ If needs_skills is false, the task will be answered directly by the LLM without 
             }
             skill_summaries.append(summary)
         
-        # Create prompt for LLM to select skills
-        prompt = f"""You are an intelligent skill orchestrator. Your job is to select the best skill(s) to complete a task.
+        # Create prompt for LLM to select skills with emphasis on relevance
+        prompt = f"""You are an intelligent skill orchestrator. Your job is to select the best skill(s) to complete a task with MAXIMUM RELEVANCE.
 
 AVAILABLE SKILLS:
 {json.dumps(skill_summaries, indent=2)}
@@ -130,15 +130,25 @@ AVAILABLE SKILLS:
 TASK: {task}
 
 Analyze the task and available skills. Determine:
-1. Which skill(s) are needed to complete this task
+1. Which skill(s) are MOST RELEVANT to this specific task
 2. The optimal order for executing them (if multiple)
-3. How they should work together
+3. How they should work together to maximize relevance
+
+RELEVANCE CRITERIA (in order of importance):
+- Direct match: Skill's description/goal directly addresses the task
+- Capability match: Skill has scripts/references that can answer the task
+- Domain match: Skill operates in the same domain as the task
+- Complementarity: Multiple skills together provide more complete answer
 
 Consider:
 - Each skill's description and capabilities
 - Whether the task requires data gathering, analysis, frameworks, or problem-solving
 - Whether multiple skills can complement each other
 - The logical flow: data gathering → analysis → frameworks → recommendations
+- RELEVANCE: Only select skills that are truly relevant - avoid marginally relevant skills
+
+IMPORTANT: Prefer fewer, highly relevant skills over many marginally relevant ones.
+If one skill can handle the task alone with high relevance, select only that skill.
 
 Respond with a JSON object in this exact format:
 {{

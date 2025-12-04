@@ -99,7 +99,7 @@ if not os.getenv("OPENAI_API_KEY"):
 def main():
     """Main execution function."""
     # Discover skills
-    skills_dir = Path(__file__).parent.parent / "skills_samples"
+    skills_dir = Path(__file__).parent.parent / "skills"
     
     if not skills_dir.exists():
         logger.error(f"Skills directory not found: {skills_dir}")
@@ -109,7 +109,7 @@ def main():
     all_skills = discover_skills(skills_dir)
     
     if not all_skills:
-        logger.error("No skills found in skills_samples directory")
+        logger.error("No skills found in skills directory")
         sys.exit(1)
     
     logger.info(f"Found {len(all_skills)} skill(s): {', '.join([s['name'] for s in all_skills])}")

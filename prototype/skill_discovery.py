@@ -274,15 +274,19 @@ def generate_task_prompt(skill: Dict[str, Any], user_task: str) -> str:
     # List files tool
     prompt_parts.append("\n5. Use list_files tool to see all available resources")
     
-    # Output instructions
-    prompt_parts.append("\n6. Synthesize information from ALL resources used:")
+    # Output instructions with relevance focus
+    prompt_parts.append("\n6. Synthesize information from ALL resources used with RELEVANCE FOCUS:")
     if scripts:
         prompt_parts.append(f"   - Chain and combine outputs from multiple scripts ({len(scripts)} available)")
     if references:
         prompt_parts.append(f"   - Integrate insights from multiple references ({len(references)} available)")
     prompt_parts.append("   - Your knowledge and analysis")
+    prompt_parts.append("   - CRITICAL: Filter and prioritize information based on relevance to the specific task")
+    prompt_parts.append("   - Focus on insights that directly address the user's question")
+    prompt_parts.append("   - Remove or de-emphasize generic information that doesn't relate to the task")
+    prompt_parts.append("   - Ensure every section of your output connects back to the original question")
     
-    prompt_parts.append("\n7. Provide a comprehensive, actionable response that synthesizes information from all scripts and references you used, following SKILL.md's structure and recommendations.")
+    prompt_parts.append("\n7. Provide a comprehensive, actionable response that synthesizes information from all scripts and references you used, following SKILL.md's structure and recommendations, while ensuring high relevance to the specific task.")
     
     return "".join(prompt_parts)
 

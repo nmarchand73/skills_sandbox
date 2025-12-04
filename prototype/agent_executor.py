@@ -8,6 +8,7 @@ from langchain_openai import ChatOpenAI
 from logger_config import get_logger
 import subprocess
 import json
+import re
 
 logger = get_logger(__name__)
 
@@ -283,6 +284,8 @@ def create_agent_from_skill(agent_config: Dict[str, Any], skill_path: Path) -> A
     )
     
     # Create agent
+    # Note: Memory is not enabled because we use context parameter for passing outputs between tasks
+    # Memory is more useful for cross-session persistence, which we don't need for single executions
     agent = Agent(
         role=agent_config["role"],
         goal=agent_config["goal"],
@@ -290,10 +293,39 @@ def create_agent_from_skill(agent_config: Dict[str, Any], skill_path: Path) -> A
         tools=tools,
         llm=llm,
         verbose=True,
-        allow_delegation=False
+        allow_delegation=False,  # Keep disabled - agents work independently on their skill tasks
+        max_iter=15,  # Prevent infinite loops (max 15 iterations per task)
+        max_rpm=10  # Rate limiting: max 10 requests per minute per agent
     )
     
     return agent
+
+
+def _extract_key_requirements(task_description: str) -> str:
+    """Extract key requirements and focus areas from task description for relevance."""
+    # Remove common instruction words and extract meaningful phrases
+    task_lower = task_description.lower()
+    
+    # Extract question words and key phrases
+    question_words = ['what', 'how', 'why', 'when', 'where', 'who', 'which', 'analyze', 'explain', 'describe', 'compare', 'evaluate']
+    key_phrases = []
+    
+    # Find sentences with question words or action verbs
+    sentences = re.split(r'[.!?]\s+', task_description)
+    for sentence in sentences:
+        sentence_lower = sentence.lower().strip()
+        if any(word in sentence_lower for word in question_words) or len(sentence.split()) < 15:
+            # Extract meaningful content (remove common words)
+            words = [w for w in sentence.split() if len(w) > 3 and w.lower() not in ['this', 'that', 'with', 'from', 'have', 'will', 'should', 'must', 'need']]
+            if words:
+                key_phrases.append(' '.join(words[:5]))  # Take first 5 meaningful words
+    
+    if key_phrases:
+        return '; '.join(key_phrases[:3])  # Return top 3 key phrases
+    else:
+        # Fallback: extract first 10 words as key requirements
+        words = [w for w in task_description.split() if len(w) > 2][:10]
+        return ' '.join(words) if words else "the task requirements"
 
 
 def execute_skill_agent(
@@ -306,10 +338,16 @@ def execute_skill_agent(
     agent = create_agent_from_skill(agent_config, skill_path)
     
     # Enhanced task description that uses SKILL.md as primary reference
-    # Emphasizes comprehensive use of ALL available resources
+    # Emphasizes comprehensive use of ALL available resources AND relevance to the specific task
+    task_keywords = _extract_key_requirements(task_description)
     enhanced_task = f"""{task_description}
 
-CRITICAL: You must use this skill's resources COMPREHENSIVELY and THOROUGHLY.
+CRITICAL: You must use this skill's resources COMPREHENSIVELY and THOROUGHLY, while ensuring your output is HIGHLY RELEVANT to the specific task.
+
+TASK FOCUS: Your analysis must directly address: {task_keywords}
+- Every insight, finding, and recommendation must relate back to this specific task
+- Avoid generic information - focus on what's relevant to this question
+- Prioritize information that directly answers or addresses the task requirements
 
 STEP 1: Read SKILL.md FIRST (MANDATORY)
 - Use read_skill_md tool IMMEDIATELY - this is your PRIMARY guide
@@ -346,13 +384,18 @@ STEP 3: Read ALL Relevant References (if references exist)
 - Use read_pdf tool for PDF files, read_reference for text files
 - Read references even if scripts provide data - they add context and frameworks
 - The more references you read, the more comprehensive your analysis will be
+- The more references you read, the more comprehensive your analysis will be
 
-STEP 4: Synthesize COMPREHENSIVELY
+STEP 4: Synthesize COMPREHENSIVELY with RELEVANCE FOCUS
 - Combine outputs from ALL scripts you executed
 - Integrate insights from ALL references you read
 - Follow SKILL.md's structure for your output
 - Be thorough - include all relevant findings
 - Show how different resources complement each other
+- CRITICAL: Filter and prioritize information based on relevance to the specific task
+- Focus on insights that directly address: {task_keywords}
+- Remove or de-emphasize information that doesn't relate to the task
+- Ensure every section of your output connects back to the original question
 
 QUALITY REQUIREMENTS:
 - Use at least 80% of available scripts (if 3 scripts exist, use at least 2-3)
@@ -364,15 +407,34 @@ QUALITY REQUIREMENTS:
 - Don't rush - thoroughness is more important than speed
 - Follow SKILL.md workflows completely, not partially
 - Your output should reflect comprehensive use of the skill's resources
-- The more references you read, the more comprehensive and well-informed your analysis will be
 
-Your final output must demonstrate that you used this skill's resources comprehensively and followed SKILL.md guidance thoroughly."""
+RELEVANCE REQUIREMENTS:
+- Every finding must connect to the task: {task_keywords}
+- Prioritize information that directly answers the question
+- Filter out generic information that doesn't address the specific task
+- Structure your output to clearly show how each section relates to the task
+- End with a clear summary that directly addresses the original question
+
+Your final output must demonstrate that you:
+1. Used this skill's resources comprehensively
+2. Followed SKILL.md guidance thoroughly
+3. Ensured high relevance to the specific task: {task_keywords}"""
     
-    # Create task with emphasis on chaining multiple resources
+    # Create task-specific expected output that emphasizes relevance
+    # Extract key aspects from task_description to make expected_output more specific
+    task_keywords = _extract_key_requirements(task_description)
+    expected_output = f"""A highly relevant and comprehensive analysis that:
+1. Directly addresses: {task_keywords}
+2. Chains and synthesizes information from multiple scripts and/or reference files
+3. Follows SKILL.md guidance and structure
+4. Provides actionable insights specific to the task
+5. Demonstrates clear relevance to the original question"""
+    
+    # Create task with emphasis on chaining multiple resources and relevance
     task = Task(
         description=enhanced_task,
         agent=agent,
-        expected_output="A comprehensive analysis that chains and synthesizes information from multiple scripts and/or reference files, following SKILL.md guidance"
+        expected_output=expected_output
     )
     
     # Create crew
@@ -660,6 +722,9 @@ def create_agent_with_skill_path(agent_config: Dict[str, Any], skill_path: Path)
         openai_api_key=os.getenv("OPENAI_API_KEY")
     )
     
+    # Create agent with performance settings
+    # Note: Memory is not enabled because we use context parameter for passing outputs between tasks
+    # Memory is more useful for cross-session persistence, which we don't need for single executions
     agent = Agent(
         role=agent_config["role"],
         goal=agent_config["goal"],
@@ -667,7 +732,9 @@ def create_agent_with_skill_path(agent_config: Dict[str, Any], skill_path: Path)
         tools=tools,
         llm=llm,
         verbose=True,
-        allow_delegation=False
+        allow_delegation=False,  # Keep disabled - agents work independently on their skill tasks
+        max_iter=15,  # Prevent infinite loops (max 15 iterations per task)
+        max_rpm=10  # Rate limiting: max 10 requests per minute per agent
     )
     
     return agent
@@ -731,28 +798,33 @@ OUTPUT REQUIREMENTS:
             context = []  # No context in parallel mode
         elif i == 0:
             # First task in sequential mode: full description with emphasis on providing usable output
+            task_keywords = _extract_key_requirements(task_description)
             task_desc = f"""{task_description}
 
 CRITICAL: This is STEP 1 of {len(skill_paths)}. Your output will be the INPUT for the next agent.
+
+TASK FOCUS: Ensure your output is highly relevant to: {task_keywords}
 
 YOUR RESPONSIBILITIES:
 1. Read SKILL.md FIRST using read_skill_md tool to understand this skill's capabilities
 2. Execute scripts and read references as needed to gather comprehensive information
 3. Structure your output clearly so the next agent can easily use it:
-   - Provide raw data, findings, and key insights
+   - Provide raw data, findings, and key insights relevant to: {task_keywords}
    - Include specific facts, numbers, and observations
    - Organize information in a logical structure
    - Make it clear what you discovered and what it means
 4. Be thorough and complete - the next agent depends on your work
+5. Focus on information that is relevant to the task - filter out irrelevant data
 
 OUTPUT REQUIREMENTS:
-- Comprehensive and detailed findings
+- Comprehensive and detailed findings that directly relate to: {task_keywords}
 - Clear structure (use headings, lists, sections)
-- Specific data points and observations
+- Specific data points and observations relevant to the task
 - Key insights and preliminary conclusions
-- Everything needed for the next agent to build upon"""
+- Everything needed for the next agent to build upon
+- Filter out irrelevant information - focus on what matters for this task"""
             
-            expected_output = f"Comprehensive, well-structured data and findings from {agent_config['name']} that provides all necessary information for the next agent to build upon. Must include specific details, facts, and insights."
+            expected_output = f"Comprehensive, well-structured data and findings from {agent_config['name']} that: (1) directly addresses {task_keywords}, (2) provides all necessary information for the next agent to build upon, (3) includes specific details, facts, and insights relevant to the task, and (4) filters out irrelevant information."
             context = []
         else:
             # Subsequent tasks: explicitly use previous output
@@ -790,12 +862,13 @@ YOUR RESPONSIBILITIES - Follow This Workflow:
      * Use at least 80% of available scripts
      * Process/analyze the previous agent's data using your scripts
    - Read MULTIPLE references (if references exist):
-     * Read at least 2-3 references (or all if fewer exist)
+     * Read at least 2-3 references (or 3-4 if 7+ exist, or all if fewer than 3)
      * Use read_pdf for PDFs, read_reference for text files
      * Apply frameworks/methodologies from references to previous findings
-     * Each reference provides different value - use them all
+     * Each reference provides different value - use multiple to get comprehensive coverage
+     * Don't just read one reference - read several to get different perspectives
 
-4. BUILD ON Previous Work - Add Your Value:
+4. BUILD ON Previous Work - Add Your Value with RELEVANCE:
    - Take their findings as GIVEN (don't repeat them)
    - Apply YOUR skill's unique capabilities:
      * Use your scripts to process their data
@@ -803,6 +876,8 @@ YOUR RESPONSIBILITIES - Follow This Workflow:
      * Use your references to provide additional analysis
    - Synthesize: combine their work with your expertise
    - Provide NEW insights that build on their foundation
+   - CRITICAL: Focus on insights that are relevant to: {task_keywords}
+   - Filter and prioritize information based on task relevance
 
 5. STRUCTURE YOUR OUTPUT:
    - Summary of what you received from previous agent
@@ -819,7 +894,8 @@ OUTPUT REQUIREMENTS:
 - Synthesized information from both agents
 - If last agent: final comprehensive conclusions"""
             
-            expected_output = f"Enhanced analysis from {agent_config['name']} that explicitly builds on {prev_skill_name}'s findings, adds new insights using this skill's capabilities, and provides a synthesized result."
+            task_keywords = _extract_key_requirements(task_description)
+            expected_output = f"Enhanced analysis from {agent_config['name']} that: (1) explicitly builds on {prev_skill_name}'s findings, (2) adds new insights using this skill's capabilities, (3) provides a synthesized result, and (4) ensures all insights are highly relevant to: {task_keywords}"
             # Context includes all previous tasks for full chain visibility
             context = tasks[:i]  # All previous tasks
         

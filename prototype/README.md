@@ -93,14 +93,14 @@ $env:OPENAI_TEMPERATURE="0.7"
 ```
 
 The prototype will:
-1. **Discover** all skills in `skills_samples/` directory
+1. **Discover** all skills in `skills/` directory
 2. **Select** the best skill(s) based on your question
 3. **Generate** optimized prompts based on each skill's structure (scripts, references)
 4. **Execute** the agent(s) with the appropriate tools
 
 ## How It Works
 
-1. **Skill Discovery**: Automatically scans `skills_samples/` directory and discovers all skills
+1. **Skill Discovery**: Automatically scans `skills/` directory and discovers all skills
 2. **Skill Selection**: Matches your question to the best skill(s) using:
    - Keyword matching in skill descriptions
    - Relevance scoring based on task requirements
