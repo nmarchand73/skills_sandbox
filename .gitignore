@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+
+# Environment variables
+.env
+.env.local
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+logs/
+prototype/logs/
+
+# Outputs
+prototype/outputs/
+outputs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project specific
+backend/skills/
+*.pyc
+

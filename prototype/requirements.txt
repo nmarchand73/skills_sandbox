@@ -1,0 +1,14 @@
+crewai
+langchain-openai
+openai
+python-dotenv
+pyyaml
+yfinance
+pandas
+numpy
+fastapi
+uvicorn
+websockets
+pypdf2
+pdfplumber
+
